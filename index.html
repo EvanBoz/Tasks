@@ -95,7 +95,7 @@ h3{margin:1rem 0 .3rem;font-size:.95rem}kbd{background:var(--card);border:1px so
  <button id="undoB" title="Undo (Ctrl+Z)">Undo</button><button id="redoB" title="Redo (Ctrl+Y)">Redo</button>
  <button id="openB">Open</button><button id="saveB" class="primary" title="Ctrl+S">Save</button>
  <button id="setB">Settings</button><button id="helpB" title="Help (?)">Help</button>
- <input id="file" type="file" accept=".task,.taskboard,.json,application/json" hidden>
+ <input id="file" type="file" accept=".task,.taskboard,.json" hidden>
 </header>
 <div class="pad row bar" id="fbar">
  <label>Group <select id="group"><option value="col">Status</option><option value="tag">Tag</option><option value="pri">Priority</option><option value="due">Due date</option></select></label>
@@ -139,7 +139,7 @@ h3{margin:1rem 0 .3rem;font-size:.95rem}kbd{background:var(--card);border:1px so
 <li><b>Search</b> matches titles, notes, subtasks and tag names. Esc clears it.</li>
 <li><b>Undo / Redo</b>: last 60 changes this session (lost on reload; settings changes aren't included).</li>
 <li><b>Open</b>: loads a .task file. In Chrome/Edge it also links the file so later changes auto-save to it. If you already have tasks you're asked: OK = replace, Cancel = merge (adds only tasks you don't have, keeps your settings).</li>
-<li><b>Save</b>: Chrome/Edge asks where once, then auto-saves ("Save now" forces it). Other browsers download a new .task file each time.</li>
+<li><b>Save</b>: Chrome/Edge asks where once, then auto-saves ("Save now" forces it). Other browsers download a new .task file each time. Files are named like 001-1126.task (save number, then month and year). The number goes up with each new file you save that month and restarts at 001 the next month.</li>
 <li><b>Settings</b> and <b>Help</b>.</li></ul>
 <h3>Filter bar</h3><ul>
 <li><b>Group</b> (Board only): Status, Tag, Priority or Due date. Dragging a card to another column changes that field.</li>
@@ -159,7 +159,7 @@ h3{margin:1rem 0 .3rem;font-size:.95rem}kbd{background:var(--card);border:1px so
 <li>Calendar shows tasks with a due date (4 per day, then "+n more"). Click a chip to edit, drag it to reschedule, click an empty day to add a task for that date.</li>
 <li>Stats are calculated from your tasks, so they live in your .task file. Archived and trashed completed tasks still count; emptying the trash removes them.</li></ul>
 <h3>Saving and safety</h3><ul>
-<li>Your <b>.task file</b> is the real save: tasks, trash, tag names, settings and your current view. It's plain JSON. Old .taskboard and .json backups still open.</li>
+<li>Your <b>.task file</b> is the real save: tasks, trash, tag names, settings and your current view. It's plain JSON. Older .taskboard and .json backups still open.</li>
 <li>The browser keeps a safety copy too, but clearing site data or private windows wipes it, so keep a file.</li>
 <li>Orange status = unsaved changes. You also get a backup reminder after the number of days you set, and a warning when closing with unsaved changes (unless a file is linked).</li>
 <li>No syncing: each device has its own copy. Save, then Open that file elsewhere. If two devices both edit, the last save wins.</li>
@@ -181,7 +181,7 @@ const addD=(s,n)=>{const d=new Date(s+"T12:00");d.setDate(d.getDate()+n);return 
 const fmt=x=>new Date(typeof x==="string"?x+"T12:00":x).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"});
 const KEY="taskboard-v3",COLS=[["todo","To do"],["doing","In progress"],["done","Done"]],PN=["No priority","Low","Medium","High"];
 const MODS={sub:"Subtasks",rec:"Recurring tasks",cal:"Calendar view",stats:"Stats view",time:"Estimates & timer",pin:"Pinned tasks",bulk:"Bulk select",start:"Start dates"};
-const dflt=()=>({tags:[1,2,3,4,5,6].map(n=>"Tag "+n),tasks:[],trash:[],last:0,ui:{},set:{theme:"auto",accent:"#0d6e6e",dens:"cozy",font:16,wk:1,showDone:true,backup:7,mods:Object.fromEntries(Object.keys(MODS).map(k=>[k,true]))}});
+const dflt=()=>({tags:[1,2,3,4,5,6].map(n=>"Tag "+n),tasks:[],trash:[],last:0,ui:{},set:{theme:"auto",accent:"#0d6e6e",dens:"cozy",font:16,wk:1,showDone:true,backup:7,defTime:"07:00",mods:Object.fromEntries(Object.keys(MODS).map(k=>[k,true]))}});
 const pm={low:1,med:2,high:3};
 function norm(o){return{id:String(o.id||uid()),title:String(o.title||"Untitled"),notes:String(o.notes||""),tag:o.tag>=1&&o.tag<=6?+o.tag:0,pri:typeof o.pri==="string"?(pm[o.pri]||0):(o.pri>=0&&o.pri<=3?+o.pri:0),col:["todo","doing","done"].includes(o.col)?o.col:"todo",start:o.start||"",due:o.due||"",time:o.time||"",created:o.created||Date.now(),done:o.done||0,est:+o.est||0,spent:+o.spent||0,run:+o.run||0,rec:["day","week","month","year"].includes(o.rec)?o.rec:"",subs:Array.isArray(o.subs)?o.subs.map(s=>({t:String(s.t||""),d:!!s.d})):[],pin:!!o.pin,arch:!!o.arch}}
 let S=dflt(),undo=[],redo=[],view="board",group="col",sort="due",q="",f={tag:"all",pri:"all",scope:"active",when:"all"},sel=new Set(),dirty=false,handle=null,editing=null,draft=[],collapsed=new Set(),exp=new Set(),calS={y:new Date().getFullYear(),m:new Date().getMonth()},wt=0;
@@ -191,6 +191,7 @@ function ingest(d,replace){
  if(replace){S.tasks=ts;S.trash=(d.trash||[]).filter(t=>t&&t.title).map(norm)}
  else{const ids=new Set(S.tasks.map(t=>t.id));ts.forEach(t=>ids.has(t.id)||S.tasks.push(t))}
  const tg=d.tags||d.tagNames;if(replace&&Array.isArray(tg)&&tg.length===6)S.tags=tg.map(String);
+ if(replace&&d.seq)S.seq=d.seq;
  if(replace&&d.ui){S.ui=d.ui;applyUI(d.ui)}
  if(replace&&d.set)S.set={...S.set,...d.set,mods:{...S.set.mods,...(d.set.mods||{})}};
  return ts.length}
@@ -271,7 +272,9 @@ function render(){
  document.title=(due?`(${due}) `:"")+"Task Board";
  const days=(Date.now()-S.last)/864e5,s=$("#status");s.className="pad";
  if(handle)s.textContent=`Linked to ${handle.name} · ${dirty?"saving…":"saved"}`;
- else if(dirty){s.textContent="Unsaved changes. Save (Ctrl+S) to keep a file.";if(S.set.backup>0&&days>S.set.backup){s.textContent+=` Last backup ${Math.floor(days)} days ago.`;s.className+=" warn"}}
+ else if(dirty){s.textContent="Unsaved changes. Save (Ctrl+S) to keep a file.";
+  if(S.set.backup>0&&!S.last&&S.tasks.length){s.textContent="You haven't saved a backup file yet. Press Save to keep one.";s.className+=" warn"}
+  else if(S.set.backup>0&&S.last&&days>S.set.backup){s.textContent+=` Last backup ${Math.floor(days)} days ago.`;s.className+=" warn"}}
  else s.textContent=S.last?"Last saved "+fmt(S.last):"";
  $("#saveB").textContent=handle?"Save now":"Save";alertBar()}
 function alertBar(){const a=$("#alert");a.textContent="";if(view==="stats")return;
@@ -375,6 +378,7 @@ function openEdit(id,preset){
  if(isNew&&!preset&&f.tag!=="all")t.tag=+f.tag;
  draft=t.subs.map(s=>({...s}));const set=(k,v)=>$("#e-"+k).value=v;
  set("title",t.title);set("notes",t.notes);set("tag",t.tag);set("pri",t.pri);set("col",t.col);set("start",t.start);set("due",t.due);set("time",t.time);set("est",t.est||"");set("rec",t.rec);
+ if(isNew&&t.due&&!t.time)set("time",S.set.defTime);
  $("#e-pin").checked=t.pin;$("#e-arch").checked=t.arch;$("#e-head").textContent=isNew?"New task":"Edit task";
  $$(".only-edit").forEach(x=>x.style.display=isNew?"none":"");
  $("#e-info").textContent=isNew?"":"Created "+fmt(t.created)+(t.done?" · Completed "+fmt(t.done):"");
@@ -386,7 +390,9 @@ $("#e-tgl").onclick=()=>{const t=cur;commit(()=>t.run?stopTimer(t):(t.run=Date.n
 $("#e-rst").onclick=()=>{const t=cur;commit(()=>{t.run=0;t.spent=0});tmUI()};
 $("#eDel").onclick=()=>{const t=cur;$("#dlg").close();if(t&&!isNew)del(t)};
 $("#eDup").onclick=()=>{const t=cur;$("#dlg").close();if(t&&!isNew)dup(t)};
-$$("[data-d]").forEach(b=>b.onclick=()=>{const d=b.dataset.d,i=$("#e-due");i.value=d==="x"?"":d==="p1"?addD(i.value||today(),1):addD(today(),+d)});
+function defT(){const d=$("#e-due").value,t=$("#e-time");if(d&&!t.value&&S.set.defTime)t.value=S.set.defTime}
+$("#e-due").onchange=defT;
+$$("[data-d]").forEach(b=>b.onclick=()=>{const d=b.dataset.d,i=$("#e-due");i.value=d==="x"?"":d==="p1"?addD(i.value||today(),1):addD(today(),+d);if(d==="x")$("#e-time").value="";else defT()});
 
 /* ---- settings ---- */
 function settings(){const b=$("#sbody"),s=S.set;b.textContent="";
@@ -400,6 +406,7 @@ function settings(){const b=$("#sbody"),s=S.set;b.textContent="";
  row("Week starts on",sel([["1","Monday"],["0","Sunday"]],s.wk,v=>s.wk=+v));
  const sd=el("input");sd.type="checkbox";sd.checked=s.showDone;sd.onchange=()=>{s.showDone=sd.checked;persist()};row("Show completed tasks",sd);
  const bk=el("input");bk.type="number";bk.min=0;bk.style.width="4rem";bk.value=s.backup;bk.onchange=()=>{s.backup=+bk.value;persist()};row("Backup reminder (days, 0 = off)",bk);
+ const dt=el("input");dt.type="time";dt.value=s.defTime||"";dt.onchange=()=>{s.defTime=dt.value;persist()};row("Default due time (blank = none)",dt);
  H("Features (turn off what you don't need)");
  for(const k in MODS){const c=el("input");c.type="checkbox";c.checked=s.mods[k];c.onchange=()=>{s.mods[k]=c.checked;persist()};row(MODS[k],c)}
  H("Tag names");
@@ -418,15 +425,17 @@ function dl(name,data,type){const a=el("a");a.href=URL.createObjectURL(new Blob(
 const esc=x=>'"'+String(x).replace(/"/g,'""')+'"';
 const csv=()=>["Title,Status,Tag,Priority,Created,Start,Due,Due time,Completed,Estimate (min),Repeats,Subtasks,Notes",...S.tasks.map(t=>[t.title,t.col,tname(t.tag),PN[t.pri],iso(new Date(t.created)),t.start,t.due,t.time,t.done?iso(new Date(t.done)):"",t.est,t.rec,t.subs.map(s=>(s.d?"[x] ":"[ ] ")+s.t).join("; "),t.notes].map(esc).join(","))].join("\r\n");
 const ics=()=>["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//TaskBoard//EN",...S.tasks.filter(t=>t.due).flatMap(t=>["BEGIN:VEVENT","UID:"+t.id+"@taskboard","DTSTAMP:"+new Date().toISOString().replace(/[-:]|\.\d+/g,""),"DTSTART;VALUE=DATE:"+t.due.replace(/-/g,""),"DTEND;VALUE=DATE:"+addD(t.due,1).replace(/-/g,""),"SUMMARY:"+t.title.replace(/[,;\n]/g," "),"STATUS:"+(t.col==="done"?"COMPLETED":"CONFIRMED"),"END:VEVENT"]),"END:VCALENDAR"].join("\r\n");
-const FT={types:[{description:"Task Board",accept:{"application/json":[".task",".taskboard"]}}]};
+const FT={types:[{description:"Task Board (.task)",accept:{"application/octet-stream":[".task"]}}]},FO={types:[{description:"Task Board",accept:{"application/octet-stream":[".task",".taskboard",".json"]}}]};
 async function writeFile(){const w=await handle.createWritable();await w.write(exportStr());await w.close();S.last=Date.now();dirty=false;store();render()}
+function nextName(){const d=new Date(),k=String(d.getMonth()+1).padStart(2,"0")+String(d.getFullYear()%100).padStart(2,"0"),n=(S.seq&&S.seq.k===k?S.seq.n:0)+1;return{k,n,name:String(n).padStart(3,"0")+"-"+k+".task"}}
 async function saveFile(){
- if(window.showSaveFilePicker){try{if(!handle)handle=await showSaveFilePicker({suggestedName:"tasks.task",...FT});await writeFile();toast("Saved to "+handle.name);return}catch(e){if(e.name==="AbortError")return;handle=null}}
- dl("tasks-"+today()+".task",exportStr(),"application/json");S.last=Date.now();dirty=false;store();render();toast("Backup downloaded")}
+ const nm=nextName();
+ if(window.showSaveFilePicker){try{if(!handle){handle=await showSaveFilePicker({suggestedName:nm.name,...FT});S.seq={k:nm.k,n:nm.n}}await writeFile();toast("Saved to "+handle.name);return}catch(e){if(e.name==="AbortError")return;handle=null}}
+ S.seq={k:nm.k,n:nm.n};dl(nm.name,exportStr(),"application/octet-stream");S.last=Date.now();dirty=false;store();render();toast("Backup downloaded")}
 function importText(txt,linked){try{const d=JSON.parse(txt),n=Array.isArray(d)?d.length:(d.tasks||[]).length;
  const rep=linked||!S.tasks.length||confirm(`Import ${n} tasks?\nOK = replace current board\nCancel = merge into current board`);
  commit(()=>ingest(d,rep),`Imported ${n} tasks`);if(linked){dirty=false;render()}}catch(e){toast("Could not read that file")}}
-async function openFile(){if(window.showOpenFilePicker){try{const[h]=await showOpenFilePicker({...FT,excludeAcceptAllOption:false});handle=h;importText(await(await h.getFile()).text(),true);return}catch(e){if(e.name==="AbortError")return}}$("#file").click()}
+async function openFile(){if(window.showOpenFilePicker){try{const[h]=await showOpenFilePicker({...FO});handle=h;importText(await(await h.getFile()).text(),true);return}catch(e){if(e.name==="AbortError")return}}$("#file").click()}
 $("#openB").onclick=openFile;$("#saveB").onclick=saveFile;
 $("#file").onchange=async e=>{const f=e.target.files[0];e.target.value="";if(f)importText(await f.text())};
 addEventListener("dragover",e=>{if(e.dataTransfer.types.includes("Files"))e.preventDefault()});
