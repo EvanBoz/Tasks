@@ -95,7 +95,7 @@ h3{margin:1rem 0 .3rem;font-size:.95rem}kbd{background:var(--card);border:1px so
  <button id="undoB" title="Undo (Ctrl+Z)">Undo</button><button id="redoB" title="Redo (Ctrl+Y)">Redo</button>
  <button id="openB">Open</button><button id="saveB" class="primary" title="Ctrl+S">Save</button>
  <button id="setB">Settings</button><button id="helpB" title="Help (?)">Help</button>
- <input id="file" type="file" accept=".task,.taskboard,.json" hidden>
+ <input id="file" type="file" hidden>
 </header>
 <div class="pad row bar" id="fbar">
  <label>Group <select id="group"><option value="col">Status</option><option value="tag">Tag</option><option value="pri">Priority</option><option value="due">Due date</option></select></label>
@@ -435,7 +435,7 @@ async function saveFile(){
 function importText(txt,linked){try{const d=JSON.parse(txt),n=Array.isArray(d)?d.length:(d.tasks||[]).length;
  const rep=linked||!S.tasks.length||confirm(`Import ${n} tasks?\nOK = replace current board\nCancel = merge into current board`);
  commit(()=>ingest(d,rep),`Imported ${n} tasks`);if(linked){dirty=false;render()}}catch(e){toast("Could not read that file")}}
-async function openFile(){if(window.showOpenFilePicker){try{const[h]=await showOpenFilePicker({...FO});handle=h;importText(await(await h.getFile()).text(),true);return}catch(e){if(e.name==="AbortError")return}}$("#file").click()}
+async function openFile(){if(window.showOpenFilePicker){try{const[h]=await showOpenFilePicker();handle=h;importText(await(await h.getFile()).text(),true);return}catch(e){if(e.name==="AbortError")return}}$("#file").click()}
 $("#openB").onclick=openFile;$("#saveB").onclick=saveFile;
 $("#file").onchange=async e=>{const f=e.target.files[0];e.target.value="";if(f)importText(await f.text())};
 addEventListener("dragover",e=>{if(e.dataTransfer.types.includes("Files"))e.preventDefault()});
